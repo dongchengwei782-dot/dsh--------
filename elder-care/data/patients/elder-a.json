@@ -1,0 +1,15 @@
+{
+  "id": "elder-a",
+  "displayName": "老人 A（虚构示例，不对应真实人物）",
+  "age": 78,
+  "sex": "男",
+  "facts": [
+    { "id": "f1", "type": "疾病", "content": "心房颤动", "status": "已确认", "source": "家属提供的出院小结", "recordedAt": "2026-09-02", "validFrom": "2024-03" },
+    { "id": "f2", "type": "疾病", "content": "高血压", "status": "已确认", "source": "家属提供的出院小结", "recordedAt": "2026-09-02", "validFrom": "2015" },
+    { "id": "f3", "type": "疾病", "content": "双膝骨关节炎", "status": "已确认", "source": "家属口述并确认", "recordedAt": "2026-09-02" },
+    { "id": "f4", "type": "用药", "content": "华法林，长期服用，剂量由医生根据 INR 调整", "status": "已确认", "source": "药单 v2", "recordedAt": "2026-10-11", "validFrom": "2024-03" },
+    { "id": "f5", "type": "用药", "content": "氨氯地平，每日一次", "status": "已确认", "source": "药单 v2", "recordedAt": "2026-10-11", "validFrom": "2019" },
+    { "id": "f6", "type": "过敏", "content": "暂无已知药物过敏", "status": "已确认", "source": "家属口述并确认", "recordedAt": "2026-09-02" },
+    { "id": "f7", "type": "监测", "content": "家庭自测血压，最近一周多在 135/80 mmHg 左右", "status": "已确认", "source": "家属记录", "recordedAt": "2026-11-03" }
+  ]
+}

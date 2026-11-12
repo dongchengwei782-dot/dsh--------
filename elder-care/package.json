@@ -1,0 +1,31 @@
+{
+  "name": "dsh-elder-care",
+  "version": "0.1.0",
+  "private": true,
+  "description": "老年健康服务系统原型：基于 DeepSeek Harness 的照护组合包（主智能体 + 三个子智能体 + 两个工具）",
+  "type": "module",
+  "exports": {
+    ".": "./src/ui-host.ts",
+    "./client": "./ui/client.js",
+    "./evidence": "./src/evidence.ts",
+    "./patient-profile": "./src/patient-profile.ts",
+    "./present-answer": "./src/present-answer.ts",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.0 <0.3.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-tools": "*"
+  }
+}

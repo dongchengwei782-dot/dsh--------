@@ -1,0 +1,17 @@
+{
+  "name": "elder-care-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "老年健康服务系统原型：dsh 和它的数据目录都放在项目内，整个文件夹可以直接拷到别处部署",
+  "engines": {
+    "node": ">=24.9.0"
+  },
+  "scripts": {
+    "start": "node scripts/dsh.mjs web",
+    "dsh": "node scripts/dsh.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.2.2-rc.1",
+    "pnpm": "12.18.0"
+  }
+}

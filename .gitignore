@@ -1,0 +1,17 @@
+# 依赖：部署时在新机器上 npm install 重新装
+node_modules/
+
+# 由 elder-care/src/ui-host.ts 根据老人档案自动生成，服务启动时会重新生成
+elder-care/ui/client.patients.js
+
+# dsh 数据目录里的本机内容：密钥、会话记录、运行时生成的文件
+.dsh-home/.env
+.dsh-home/.credentials.yaml
+.dsh-home/.anonymous-user-id
+.dsh-home/sessions/
+.dsh-home/storages/
+.dsh-home/deepseek-harness/
+.dsh-home/logs/
+.dsh-home/profiles/*/node_modules/
+.dsh-home/profiles/*/.plugin-manager/
+.cordis/

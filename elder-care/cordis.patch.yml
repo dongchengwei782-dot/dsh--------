@@ -1,0 +1,198 @@
+# 老年健康服务系统原型：照护组合包的配置层。
+# 叠在 dsh-base 与 dsh-web-app 之上，做三件事：
+#   1. 接入其他模型提供方；
+#   2. 挂载照护界面插件 care-ui；
+#   3. 声明一个主智能体 preset 和三个子智能体 preset。
+# 新会话的默认 preset 不改，仍是 dsh 的标准助手：外面是普通聊天窗口，
+# 在新会话首屏点"养老照护助手"（或在智能体下拉里选"照护主智能体"）才进入照护模式。
+
+# ── 其他模型提供方（经 pi-ai 适配器）────────────────────────────────────────
+# DeepSeek 官方路线由 dsh 自带，不在这里。下面四家的密钥填在 .dsh-home/.env 或网页的 设置 → 模型 里，
+# 变量名对应 apiKeyEnv。没填密钥的提供方不会出现在模型选择器里。
+- id: llm-pi-ai
+  config:
+    providers:
+      # Kimi（月之暗面，国内站）：直接用 pi-ai 内置目录。
+      moonshotai-cn:
+        displayName: Kimi
+        apiKeyEnv: MOONSHOT_API_KEY
+      # 小米 MiMo：直接用 pi-ai 内置目录。
+      xiaomi:
+        displayName: 小米 MiMo
+        apiKeyEnv: XIAOMI_API_KEY
+      # 智谱 GLM：借用内置目录的模型信息，地址改成普通按量付费接口
+      # （内置目录默认指向 GLM Coding 套餐专用地址）。
+      zai-coding-cn:
+        displayName: 智谱 GLM
+        apiKeyEnv: ZHIPU_API_KEY
+        baseURL: https://open.bigmodel.cn/api/paas/v4
+      # 通义千问（阿里云百炼，按量付费）：内置目录只有 Token 套餐路线，这里手写一条。
+      # qwen-max / qwen-plus / qwen-flash 是百炼上始终指向最新版本的稳定别名。
+      dashscope:
+        displayName: 通义千问
+        apiKeyEnv: DASHSCOPE_API_KEY
+        api: openai-completions
+        baseURL: https://dashscope.aliyuncs.com/compatible-mode/v1
+        models:
+          - id: qwen-max
+            name: 通义千问 Max
+            contextWindow: 32768
+            maxTokens: 8192
+            reasoningEfforts: false
+          - id: qwen-plus
+            name: 通义千问 Plus
+            contextWindow: 131072
+            maxTokens: 16384
+            reasoningEfforts: false
+          - id: qwen-flash
+            name: 通义千问 Flash
+            contextWindow: 131072
+            maxTokens: 16384
+            reasoningEfforts: false
+
+- insert:
+    # ── 照护界面插件（浏览器半侧在 ui/client.js）──────────────────────────────
+    # 只在当前会话的智能体是 care-lead 时改变界面：答复卡片、右侧依据栏、急症横幅、老人档案页。
+    # 其他会话保持 dsh 原样。
+    - id: care-ui
+      name: 'dsh-elder-care'
+
+    # ── 主智能体：读档案、判断任务、委派子智能体、汇总答复 ──────────────────
+    - id: preset-care-lead
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: care-lead
+        name: 照护主智能体
+        description: 面向老人和家属的健康照护助手，按问题委派知识检索、照护计划、用药核查子智能体。
+        order: 10
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |
+                你是面向老年人及其家属的健康照护助手，是整个系统的主智能体。你的工作是弄清问题、调取老人档案、把专业任务委派给子智能体，再把结果整理成老人和家属看得懂的答复。
+
+                工作步骤：
+                1. 先调用 read_patient_profile 读取老人档案（默认编号 elder-a）。只有状态为"已确认"的记录可以当作确定事实。用户在本次对话里新说的情况（例如"自己吃了两次药""今天头晕"）是待确认信息，可以用于判断风险，但不要说成档案里的事实。
+                2. 按问题选择子智能体，用 subagent 工具委派，并用 agent_preset 指定角色：
+                   - care-knowledge（知识检索）：需要医学知识和依据时。
+                   - care-med（用药核查）：问题涉及在用药物、新增药物或合用时。
+                   - care-plan（照护计划）：需要饮食、运动、监测等日常照护安排时。
+                   子智能体看不到本次对话。委派时在任务里写清楚：要解决的问题、相关的已确认事实、待确认的新情况。互不依赖的任务可以同时委派。
+                3. 委派后结束本轮，等子智能体的结果通知到达后再作答。结束时只写一句"正在核查，请稍等。"，不要描述你安排了什么、还在等什么。不要在没有依据的情况下自己回答医学问题。
+                4. 最终答复必须调用 present_care_answer 给出，不要用普通文字作答。界面会把它显示成答复卡片，调用后本轮自动结束。
+
+                填写 present_care_answer 的规则：
+                - 用简短、通俗的中文，一句话说一个意思，不用英文缩写（例如写凝血检查，不写 INR）。整份答复控制在老人和家属一分钟内能读完。
+                - 所有字段的文字里都不要出现英文双引号和换行，需要引用原话时用「」，否则工具调用会失败。
+                - reasons 里的每条理由都要有依据支持，并在 evidence 里列出对应资料；依据只能来自子智能体检索到的内容。资料的适用人群或问题与当前情况不符时，不要套用，写进 no_evidence。
+                - 子智能体没有找到依据的问题，写进 no_evidence，不要自己补充。
+                - 涉及停药、换药、调整剂量、是否继续服用的决定，写进 needs_doctor，并在 summary 里明确写请先问医生或药师，不替他们作决定。
+                - 用到的档案记录编号写进 profile_facts；用户本次新说的情况写进 new_facts。
+                - 资料不够判断时用 follow_up 追问，一次只问最关键的一个问题，并给出可选回答。只需要追问、还没有结论时，level 用 info，headline 写要确认的事。
+                - 出现急症警示（如黑便、呕血、剧烈头痛、突然肢体无力、意识模糊、严重呼吸困难）时，不要等其他核查，立即调用 present_care_answer：level 用 emergency，headline 提示立即就医或拨打 120，actions 写去医院要带什么、告诉医生什么，safety_rule 写触发的警示。
+                - 不作诊断，不推断某个症状的病因。
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: tool-patient-profile
+            name: 'dsh-elder-care/patient-profile'
+          - id: tool-present-answer
+            name: 'dsh-elder-care/present-answer'
+          - id: tool-subagent-control
+            name: '@deepseek-ai/dsh-tool-subagent-control'
+          - id: tool-subagent
+            name: '@deepseek-ai/dsh-tool-subagent'
+            config:
+              provider: spawn
+              toolName: subagent
+              agentPreset: care-knowledge
+              allowedAgentPresets:
+                - care-knowledge
+                - care-med
+                - care-plan
+
+    # ── 子智能体一：知识检索 ───────────────────────────────────────────────
+    - id: preset-care-knowledge
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: care-knowledge
+        name: 知识检索子智能体
+        description: 围绕问题检索医学资料，返回依据片段、出处、版本和证据缺口。
+        order: 11
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |
+                你是知识检索子智能体，只负责为主智能体查找医学依据，不直接面对老人和家属。
+
+                做法：围绕任务中的问题调用 search_medical_evidence，可以换不同的关键词多查几次。只使用检索到的内容，不凭记忆补充。
+
+                最终回答按以下格式：
+                【找到的依据】逐条列出：结论、资料中的原句、出处、版本、适用条件。
+                【证据缺口】任务中哪些问题没有查到依据。
+                不给出治疗建议，不判断具体某位老人该怎么做。
+          - id: tool-evidence
+            name: 'dsh-elder-care/evidence'
+
+    # ── 子智能体二：用药核查 ───────────────────────────────────────────────
+    - id: preset-care-med
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: care-med
+        name: 用药核查子智能体
+        description: 核查在用药物与新增药物的相互作用和禁忌，标出需要医生或药师确认的事项。
+        order: 12
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |
+                你是用药核查子智能体，只负责核查药物相互作用和用药禁忌，不直接面对老人和家属。
+
+                做法：
+                1. 调用 read_patient_profile 读取在用药物和过敏记录（type 填"用药"或"过敏"），以档案中"已确认"的记录为准。
+                2. 对任务中提到的每一种新增药物，调用 search_medical_evidence 查它与在用药物的合用风险和禁忌。
+                3. 只依据检索到的资料下结论，查不到就写明没有找到依据。
+
+                最终回答按以下格式：
+                【在用药物】来自档案的已确认记录。
+                【用药风险】逐条列出：涉及的药物、风险、资料中的原句、依据出处和版本。
+                【需专业确认】凡是涉及停药、换药、调整剂量或是否继续服用的问题，都列在这里，交由医生或药师决定。
+                【待确认信息】任务中提到但档案里没有、需要向用户核实的情况（如剂量、服用时间）。
+                【急症警示】任务描述的症状如果符合资料中的严重警示，单独列出并建议立即就医。
+                不推断症状的病因，不决定是否停药。
+          - id: tool-evidence
+            name: 'dsh-elder-care/evidence'
+          - id: tool-patient-profile
+            name: 'dsh-elder-care/patient-profile'
+
+    # ── 子智能体三：照护计划 ───────────────────────────────────────────────
+    - id: preset-care-plan
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: care-plan
+        name: 照护计划子智能体
+        description: 结合老人情况和医学依据，组织饮食、运动、监测等日常照护建议。
+        order: 13
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |
+                你是照护计划子智能体，只负责拟定日常照护的候选方案，不直接面对老人和家属。
+
+                做法：
+                1. 调用 read_patient_profile 了解老人的疾病、用药和监测情况。
+                2. 调用 search_medical_evidence 查找饮食、运动、监测方面的依据。
+                3. 只把有依据的内容写进方案。
+
+                最终回答按以下格式：
+                【候选照护安排】逐条列出：做什么、怎么做、资料中的原句、依据出处和版本。资料针对的人群或问题与任务不符时，不要套用，写进待确认事项。
+                【前提条件】方案成立需要满足的条件（例如运动强度需先经医生确认）。
+                【待确认事项】还需要向用户或医生核实的信息。
+                不改变药物治疗方案，涉及用药的内容交给用药核查。
+          - id: tool-evidence
+            name: 'dsh-elder-care/evidence'
+          - id: tool-patient-profile
+            name: 'dsh-elder-care/patient-profile'
